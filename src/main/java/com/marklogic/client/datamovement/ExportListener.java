@@ -15,10 +15,6 @@
  */
 package com.marklogic.client.datamovement;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.function.Consumer;
-
 import com.marklogic.client.document.DocumentManager;
 import com.marklogic.client.document.DocumentPage;
 import com.marklogic.client.document.DocumentRecord;
@@ -26,6 +22,13 @@ import com.marklogic.client.document.GenericDocumentManager;
 import com.marklogic.client.document.ServerTransform;
 import com.marklogic.client.io.Format;
 import com.marklogic.client.query.QueryManager;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.function.Consumer;
 import java.util.List;
 import java.util.Set;
 
@@ -55,6 +58,7 @@ import java.util.Set;
  *     moveMgr.stopJob(ticket);
  */
 public class ExportListener implements QueryBatchListener {
+  private static Logger logger = LoggerFactory.getLogger(ExportListener.class);
   private ServerTransform transform;
   private QueryManager.QueryView view;
   private Set<DocumentManager.Metadata> categories = new HashSet<>();
@@ -88,7 +92,11 @@ public class ExportListener implements QueryBatchListener {
     DocumentPage docs = getDocs(batch);
     while ( docs.hasNext() ) {
       for ( Consumer<DocumentRecord> listener : exportListeners ) {
-        listener.accept(docs.next());
+        try {
+          listener.accept(docs.next());
+        } catch (Throwable t) {
+          logger.error("Exception thrown by an onDocumentReady listener", t);
+        }
       }
     }
   }
