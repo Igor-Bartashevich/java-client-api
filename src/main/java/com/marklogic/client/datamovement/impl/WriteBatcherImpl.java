@@ -22,6 +22,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -1085,7 +1086,16 @@ public class WriteBatcherImpl
         try {
           long startTime = System.currentTimeMillis();
           if ( ! future.isCancelled() ) {
-            future.get(duration, TimeUnit.MILLISECONDS);
+            try {
+              future.get(duration, TimeUnit.MILLISECONDS);
+            } catch(CancellationException ce) {
+              if ( isTerminating() || isTerminated() || isShutdown() ) {
+                // no problem, this future was cancelled legitimately when shutdownNow() was called
+              } else {
+                // there's a problem, this future was cancelled for an unknown reason
+                throw ce;
+              }
+            }
           }
           duration -= System.currentTimeMillis() - startTime;
           if ( duration < 0 ) return false;
