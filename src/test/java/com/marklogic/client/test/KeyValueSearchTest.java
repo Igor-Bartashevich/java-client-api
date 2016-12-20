@@ -49,7 +49,6 @@ public class KeyValueSearchTest {
 	@AfterClass
 	public static void afterClass()
 	throws ForbiddenUserException, FailedRequestException {
-		Common.release();
 
 	}
 

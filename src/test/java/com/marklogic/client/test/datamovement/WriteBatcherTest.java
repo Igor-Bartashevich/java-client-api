@@ -65,6 +65,8 @@ import com.marklogic.client.datamovement.WriteEvent;
 import com.marklogic.client.datamovement.WriteFailureListener;
 import com.marklogic.client.datamovement.WriteBatcher;
 
+import com.marklogic.client.test.Common;
+
 public class WriteBatcherTest {
   private Logger logger = LoggerFactory.getLogger(WriteBatcherTest.class);
   private static DatabaseClient client = Common.connectEval();
@@ -94,8 +96,6 @@ public class WriteBatcherTest {
     DeleteQueryDefinition deleteQuery = queryMgr.newDeleteDefinition();
     deleteQuery.setCollections(whbTestCollection);
     queryMgr.delete(deleteQuery);
-
-    client.release();
   }
 
   public static void installModule() {
