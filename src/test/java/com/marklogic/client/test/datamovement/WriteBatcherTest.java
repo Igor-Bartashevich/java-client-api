@@ -32,6 +32,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.Random;
+import java.util.stream.Stream;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -761,6 +763,7 @@ public class WriteBatcherTest {
     assertEquals(0, failCount.get());
   }
 
+  // from https://github.com/marklogic/data-movement/issues/109
   @Test
   public void testMultipleFlushAnStop_Issue109() throws Exception {
     String collection = whbTestCollection + "_testMultipleFlushAnStop_Issue109";
@@ -817,5 +820,75 @@ public class WriteBatcherTest {
     t2.join();
 
     System.out.println("Size is "+client.newServerEval().xquery(query1).eval().next().getNumber().intValue());
+  }
+
+  // from https://github.com/marklogic/java-client-api/issues/595
+  @Test
+  public void testStopBeforeFlush_Issue595() throws Exception {
+    String collection = whbTestCollection + "_testStopBeforeFlush_Issue595";
+    String query1 = "fn:count(fn:collection('" + collection + "'))";
+    DocumentMetadataHandle meta = new DocumentMetadataHandle()
+      .withCollections(collection, whbTestCollection);
+    AtomicInteger count = new AtomicInteger(0);
+    AtomicBoolean isStopped = new AtomicBoolean(false);
+    WriteBatcher ihbMT =  moveMgr.newWriteBatcher();
+    ihbMT.withBatchSize(7).withThreadCount(60);
+
+    ihbMT.onBatchSuccess( batch -> {
+      if (count.get() > 6 ) {
+        boolean stopped = isStopped.getAndSet(true);
+        if ( stopped == false ) {
+          moveMgr.stopJob(batch.getBatcher());
+          logger.debug("Job stopped");
+        }
+      }
+      count.addAndGet(batch.getItems().length);
+      logger.debug("batch: " + batch.getJobBatchNumber() +
+        ", items: " + batch.getItems().length +
+        ", writes so far: " + batch.getJobWritesSoFar() +
+        ", host: " + batch.getClient().getHost());
+    })
+    .onBatchFailure( (batch, throwable) -> {
+      throwable.printStackTrace();
+      logger.debug("Failed Batch: batch: " + batch.getJobBatchNumber() +
+        ", writes so far: " + batch.getJobWritesSoFar() +
+        ", host: " + batch.getClient().getHost() +
+        ", uris: " +
+        Stream.of(batch.getItems()).map(event->event.getTargetUri()).collect(Collectors.toList()));
+    });
+    moveMgr.startJob(ihbMT);
+
+    class MyRunnable implements Runnable {
+
+      @Override
+        public void run() {
+          for (int j =0 ;j < 400; j++){
+            String uri ="/local/multi-"+ j+"-"+Thread.currentThread().getId();
+            ihbMT.add(uri, meta, new StringHandle("test"));
+          }
+          logger.debug("Finished executing thread");
+        }
+
+    }
+    Thread t1,t2;
+    t1 = new Thread(new MyRunnable());
+    t2 = new Thread(new MyRunnable());
+    t1.setName("First Thread");
+    t2.setName("Second Thread");
+
+    t1.start();
+    t2.start();
+
+    t1.join();
+    t2.join();
+
+    ihbMT.flushAndWait();
+    int countAfterFlushAndWait = count.get();
+    logger.debug("Success event count-1: "+countAfterFlushAndWait);
+    Thread.currentThread().sleep(25000L);
+    int countAfterSleep = count.get();
+    logger.debug("Success event count-2: "+countAfterSleep);
+    assertEquals(countAfterFlushAndWait, countAfterSleep);
+    assertEquals(countAfterFlushAndWait, client.newServerEval().xquery(query1).eval().next().getNumber().intValue());
   }
 }
